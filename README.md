@@ -35,4 +35,4 @@ A Chrome extension that maps bias and manipulation in any news article using AI 
 
 ---
 
-Built by [@happy_ships](https://x.com/happy_ships) · Day 6/180
+Built by [@happy_ships](https://x.com/happy_ships) · Day 7/180
