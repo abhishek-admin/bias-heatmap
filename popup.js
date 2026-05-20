@@ -91,17 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state === 'result') result.classList.add('fade-in');
   }
 
-  function showResult(text, isProgressive = false) {
-    const badge = isProgressive ? '<span class="progressive-badge">⏳ Mapping the bias...</span>' : '';
-    resultContent.innerHTML = badge + renderMarkdown(text);
-    showState('result');
-    if (!isProgressive) {
-      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-        chrome.storage.session.set({ cached_result: text, cached_at: Date.now(), cached_url: tab?.url || '' });
-      });
-    }
-  }
-
   function showError(msg) {
     errorMessage.textContent = msg;
     showState('error');
@@ -174,15 +163,16 @@ document.addEventListener('DOMContentLoaded', () => {
       showState('wrongpage');
       return;
     }
-    chrome.storage.session.get(['cached_result', 'cached_at', 'cached_url'], (data) => {
+    chrome.storage.session.get(['cached_result', 'cached_at', 'cached_url', 'cached_domain', 'cached_wordcount'], (data) => {
       if (data.cached_result && data.cached_at && data.cached_url === currentUrl) {
         if (Date.now() - data.cached_at < 10 * 60 * 1000) {
-          resultContent.innerHTML = renderMarkdown(data.cached_result);
+          const parsed = parseStructured(data.cached_result);
+          resultContent.innerHTML = buildScorecardHTML(parsed, data.cached_domain || currentUrl, data.cached_wordcount || 0);
           showState('result');
           return;
         }
       }
-      chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url']);
+      chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url', 'cached_domain', 'cached_wordcount']);
       showState('idle');
     });
   });
@@ -231,6 +221,111 @@ document.addEventListener('DOMContentLoaded', () => {
     return { title: tab.title || '', url: tab.url || '', text: '', metaDescription: '' };
   }
 
+  // ---- Structured response parser ----
+
+  function parseStructured(raw) {
+    const get = (key) => {
+      const m = raw.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+      return m ? m[1].trim() : '';
+    };
+    const getBlock = (key) => {
+      const m = raw.match(new RegExp(`^${key}:\\s*\\n([\\s\\S]*?)(?=\\n[A-Z_]+:|$)`, 'm'));
+      if (!m) return [];
+      return m[1].trim().split('\n')
+        .filter(l => /^\d+\./.test(l.trim()))
+        .map(l => {
+          const body = l.replace(/^\d+\.\s*/, '').trim();
+          const sep = body.indexOf(' — ');
+          if (sep === -1) return { text: body, reason: '' };
+          return { text: body.slice(0, sep).replace(/^[""]|[""]$/g, ''), reason: body.slice(sep + 3) };
+        });
+    };
+    return {
+      score: Math.min(10, Math.max(0, parseInt(get('BIAS_SCORE')) || 5)),
+      direction: get('DIRECTION') || 'Unknown',
+      loadedCount: parseInt(get('LOADED_COUNT')) || 0,
+      unverifiedCount: parseInt(get('UNVERIFIED_COUNT')) || 0,
+      sourcedCount: parseInt(get('SOURCED_COUNT')) || 0,
+      verdict: get('VERDICT'),
+      loaded: getBlock('LOADED_PHRASES'),
+      unverified: getBlock('UNVERIFIED'),
+      sourced: getBlock('SOURCED'),
+    };
+  }
+
+  // ---- Visual scorecard builder ----
+
+  function directionClass(d) {
+    const dl = d.toLowerCase();
+    if (dl.includes('left')) return 'left';
+    if (dl.includes('right')) return 'right';
+    if (dl.includes('center') || dl.includes('neutral')) return 'center';
+    if (dl.includes('sensation')) return 'sensationalist';
+    return 'corporate';
+  }
+
+  function buildScorecardHTML(data, domain, wordCount) {
+    const pct = (data.score / 10 * 100).toFixed(1);
+    const dc = directionClass(data.direction);
+
+    const meter = `
+      <div class="bias-meter-wrap">
+        <div class="bias-meter-header">
+          <span class="bias-meter-label">Bias Level</span>
+          <span class="bias-score-big">${data.score}<span class="bias-score-denom">/10</span></span>
+        </div>
+        <div class="bias-meter-track">
+          <div class="bias-meter-needle" style="left:${pct}%"></div>
+        </div>
+        <div class="bias-meter-ticks">
+          <span>Neutral</span><span>Moderate</span><span>Extreme</span>
+        </div>
+      </div>`;
+
+    const grid = `
+      <div class="metric-grid">
+        <div class="metric-tile accent-tile">
+          <div class="metric-number">${data.score}/10</div>
+          <div class="metric-label">Bias Score</div>
+        </div>
+        <div class="metric-tile">
+          <div class="metric-number" style="color:#ef4444">${data.loadedCount}</div>
+          <div class="metric-label">Loaded Phrases</div>
+        </div>
+        <div class="metric-tile">
+          <div class="metric-number" style="color:#eab308">${data.unverifiedCount}</div>
+          <div class="metric-label">Unverified Claims</div>
+        </div>
+        <div class="metric-tile">
+          <div class="metric-number" style="color:#22c55e">${data.sourcedCount}</div>
+          <div class="metric-label">Sourced Facts</div>
+        </div>
+      </div>`;
+
+    const dirRow = `
+      <div class="direction-row">
+        <span class="direction-badge ${dc}">${data.direction}</span>
+        <span class="verdict-text">${data.verdict}</span>
+      </div>`;
+
+    const quotes = (items, cls, label) => {
+      if (!items.length) return '';
+      const cards = items.map(q => `
+        <div class="quote-card ${cls}">
+          <div class="quote-text">"${q.text}"</div>
+          ${q.reason ? `<div class="quote-reason">↳ ${q.reason}</div>` : ''}
+        </div>`).join('');
+      return `<div class="quote-section-title">${label}</div>${cards}`;
+    };
+
+    const meta = `<div style="font-size:10px;color:#555568;margin-bottom:8px;">${domain} · ${wordCount.toLocaleString()} words analysed</div>`;
+
+    return meta + meter + grid + dirRow
+      + quotes(data.loaded, 'loaded', '🔴 Loaded Language')
+      + quotes(data.unverified, 'unverified', '🟡 Unverified Claims')
+      + quotes(data.sourced, 'sourced', '🟢 Well-Sourced Facts');
+  }
+
   async function runAction() {
     showState('loading');
     try {
@@ -243,55 +338,68 @@ document.addEventListener('DOMContentLoaded', () => {
       const wordCount = page.text.split(/\s+/).length;
       const domain = new URL(page.url).hostname.replace('www.', '');
 
-      // Phase 1: Instant local preview
-      showResult(`## 🔥 Scanning ${page.title.slice(0, 60)}\n\n**${domain}** · ${wordCount.toLocaleString()} words\n\n*Gemini is mapping the bias...*`, true);
+      // Phase 1: instant local preview
+      resultContent.innerHTML = `
+        <div style="font-size:10px;color:#555568;margin-bottom:8px;">${domain} · ${wordCount.toLocaleString()} words</div>
+        <div class="bias-meter-wrap">
+          <div class="bias-meter-header">
+            <span class="bias-meter-label">Bias Level</span>
+            <span class="bias-score-big">?<span class="bias-score-denom">/10</span></span>
+          </div>
+          <div class="bias-meter-track"><div class="bias-meter-needle" style="left:50%"></div></div>
+          <div class="bias-meter-ticks"><span>Neutral</span><span>Moderate</span><span>Extreme</span></div>
+        </div>
+        <p class="scan-inline">⏳ Mapping bias in ${wordCount.toLocaleString()} words...</p>`;
+      showState('result');
 
-      // Phase 2: Full bias heatmap
+      // Phase 2: structured Gemini call
       const fullPrompt = `Article: "${page.title}"
 URL: ${page.url}
 
 Full text:
 ${page.text.slice(0, 8000)}
 
-Analyze this article for bias and spin. Structure your response exactly as:
+Analyze this article for bias. Respond ONLY in this exact format — no extra text, no markdown:
 
-## 🔴 Loaded Language
-Quote 3-5 sentences or phrases that use emotionally charged, manipulative, or one-sided language. For each, briefly explain why it's loaded.
-1. "..." — [why it's loaded]
-2. "..." — [why it's loaded]
-3. "..." — [why it's loaded]
+BIAS_SCORE: [integer 0-10, where 0=completely neutral, 10=extreme bias]
+DIRECTION: [exactly one of: Left-leaning / Right-leaning / Center / Sensationalist / Corporate]
+LOADED_COUNT: [integer, total loaded/charged phrases found]
+UNVERIFIED_COUNT: [integer, total unverified claims found]
+SOURCED_COUNT: [integer, total well-attributed facts found]
+VERDICT: [single sentence — what spin does this article have and who benefits from it]
+LOADED_PHRASES:
+1. "exact quote from article" — reason it's loaded
+2. "exact quote from article" — reason it's loaded
+3. "exact quote from article" — reason it's loaded
+UNVERIFIED:
+1. "exact claim from article" — what is unverified or missing
+2. "exact claim from article" — what is unverified or missing
+SOURCED:
+1. "exact statement from article" — why it is credible or well-attributed
+2. "exact statement from article" — why it is credible or well-attributed
 
-## 🟡 Unverified Claims
-Quote 2-3 specific claims made without evidence, anonymous sourcing, or that need fact-checking.
-1. "..." — [what's unverified]
-2. "..." — [what's unverified]
-
-## 🟢 Well-Attributed Facts
-Quote 2-3 statements that are properly sourced, cited, or verifiable.
-1. "..." — [source or reason it's credible]
-2. "..." — [source or reason it's credible]
-
-## 📊 Bias Summary
-- **Direction:** [Left-leaning / Right-leaning / Center / Corporate / Sensationalist]
-- **Bias score:** X/10 (0=neutral, 10=extreme bias)
-- **Loaded phrases found:** [count]
-- **Unsourced claims found:** [count]
-
-## ⚡ One-Line Verdict
-[Single sentence: what's the article's spin and who benefits from it]`;
+Rules: all quotes must be verbatim from the article. LOADED_COUNT/UNVERIFIED_COUNT/SOURCED_COUNT must equal the actual number of items you list. No markdown, no headers, no deviations.`;
 
       chrome.runtime.sendMessage(
         {
           action: 'callGeminiBackground',
           prompt: fullPrompt,
           options: {
-            systemInstruction: 'You are a media literacy expert. Quote sentences verbatim from the article. Be precise and flag genuine manipulation — not generic concerns.',
-            temperature: 0.4,
+            systemInstruction: 'You are a media literacy expert. Return structured data exactly as requested. Every quote must be verbatim from the article. Numbers must be accurate counts.',
+            temperature: 0.3,
           },
         },
         (response) => {
-          if (response?.success) showResult(response.data, false);
-          else showError(response?.error || 'Analysis failed. Try again.');
+          if (response?.success) {
+            const data = parseStructured(response.data);
+            resultContent.innerHTML = buildScorecardHTML(data, domain, wordCount);
+            showState('result');
+            chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+              chrome.storage.session.set({ cached_result: response.data, cached_at: Date.now(), cached_url: tab?.url || '', cached_domain: domain, cached_wordcount: wordCount });
+            });
+          } else {
+            showError(response?.error || 'Analysis failed. Try again.');
+          }
         }
       );
     } catch (err) {
