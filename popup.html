@@ -12,6 +12,13 @@
     .wrong-page-title { font-size: 13px; font-weight: 600; color: #e0e0e8; margin-bottom: 6px; }
     .wrong-page-text { font-size: 12px; color: #8888a0; line-height: 1.55; margin-bottom: 14px; }
     #wrongpage-retry-btn { width: 100%; }
+    #onboarding { display: flex; flex-direction: column; gap: 10px; }
+    .onboarding-title { font-size: 15px; font-weight: 700; color: #e0e0e8; }
+    .onboarding-desc { font-size: 12px; color: #8888a0; line-height: 1.65; }
+    .onboarding-desc strong { color: #c8c8dc; }
+    .onboard-field { display: flex; flex-direction: column; gap: 5px; }
+    .settings-hint a { color: var(--accent); text-decoration: none; }
+    .settings-hint a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -60,6 +67,26 @@
       <p class="wrong-page-title">This isn't a news article</p>
       <p class="wrong-page-text">Bias Heatmap works on news articles, opinion pieces, and editorials — not search results or social feeds. Navigate to a news page and try again.</p>
       <button id="wrongpage-retry-btn" class="secondary-btn">← I'm on a news page now</button>
+    </div>
+
+    <div id="onboarding" class="hidden">
+      <p class="onboarding-title">👋 Welcome to Bias Heatmap</p>
+      <p class="onboarding-desc">Opens any news article and highlights <strong>loaded language</strong>, <strong>unverified claims</strong>, and the article's <strong>bias score</strong> — right in your popup. Add an API key to get started.</p>
+      <div class="onboard-field">
+        <label class="settings-label">Gemini API Key <span class="settings-hint">— <a href="https://aistudio.google.com/app/apikey" target="_blank">Get free key ↗</a></span></label>
+        <div class="settings-row">
+          <input type="password" id="onboard-gemini-input" class="settings-input" placeholder="AIza..." />
+          <button id="onboard-toggle-gemini" class="toggle-vis-btn">👁</button>
+        </div>
+      </div>
+      <div class="onboard-field">
+        <label class="settings-label">OpenRouter API Key <span class="settings-hint">— <a href="https://openrouter.ai/keys" target="_blank">Get key ↗</a></span></label>
+        <div class="settings-row">
+          <input type="password" id="onboard-openrouter-input" class="settings-input" placeholder="sk-or-..." />
+          <button id="onboard-toggle-openrouter" class="toggle-vis-btn">👁</button>
+        </div>
+      </div>
+      <button id="onboard-save-btn" class="primary-btn">Get Started →</button>
     </div>
 
     <div id="settings-panel" class="hidden">
