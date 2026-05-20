@@ -2,7 +2,7 @@
 
 > See the spin, highlighted on the actual page.
 
-**Day 07 / 180 — 180 Days of Building**
+**Day 06 / 180 — 180 Days of Building**
 
 News articles look objective — until you look closer. Bias Heatmap maps loaded language, unverified claims, and well-sourced facts across any article using AI. Color-coded, verbatim, no rewriting needed. One click and you'll see exactly which sentences are manipulation and which are journalism.
 
