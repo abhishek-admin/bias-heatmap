@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const error = document.getElementById('error');
   const errorMessage = document.getElementById('error-message');
 
+  const wrongPage = document.getElementById('wrong-page');
+  const wrongPageRetryBtn = document.getElementById('wrongpage-retry-btn');
+
   const settingsBtn = document.getElementById('settings-btn');
   const settingsPanel = document.getElementById('settings-panel');
   const settingsClose = document.getElementById('settings-close');
@@ -79,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loading.classList.toggle('hidden', state !== 'loading');
     result.classList.toggle('hidden', state !== 'result');
     error.classList.toggle('hidden', state !== 'error');
+    wrongPage.classList.toggle('hidden', state !== 'wrongpage');
     if (state === 'result') result.classList.add('fade-in');
   }
 
@@ -87,7 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
     resultContent.innerHTML = badge + renderMarkdown(text);
     showState('result');
     if (!isProgressive) {
-      chrome.storage.session.set({ cached_result: text, cached_at: Date.now() });
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+        chrome.storage.session.set({ cached_result: text, cached_at: Date.now(), cached_url: tab?.url || '' });
+      });
     }
   }
 
@@ -96,17 +102,44 @@ document.addEventListener('DOMContentLoaded', () => {
     showState('error');
   }
 
-  // ---- Restore cache on popup open ----
+  // ---- Non-news page detector ----
 
-  chrome.storage.session.get(['cached_result', 'cached_at'], (data) => {
-    if (data.cached_result && data.cached_at) {
-      if (Date.now() - data.cached_at < 10 * 60 * 1000) {
-        resultContent.innerHTML = renderMarkdown(data.cached_result);
-        showState('result');
-        return;
-      }
+  function isNonArticlePage(url) {
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace('www.', '');
+      if (host.startsWith('google.') && (u.pathname.startsWith('/search') || u.search.includes('q='))) return true;
+      if (host === 'bing.com' && u.pathname.startsWith('/search')) return true;
+      if (host === 'duckduckgo.com') return true;
+      if (host === 'yahoo.com' && (u.pathname.startsWith('/search') || u.search.includes('p='))) return true;
+      const nonArticle = ['twitter.com', 'x.com', 'facebook.com', 'instagram.com', 'tiktok.com', 'linkedin.com', 'threads.net', 'pinterest.com', 'youtube.com', 'youtu.be', 'reddit.com'];
+      return nonArticle.some(d => host === d || host.endsWith('.' + d));
+    } catch { return false; }
+  }
+
+  // ---- Restore cache on popup open (URL-aware) ----
+
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    const currentUrl = tab?.url || '';
+    if (!currentUrl || currentUrl.startsWith('chrome://') || currentUrl.startsWith('chrome-extension://')) {
+      showState('idle');
+      return;
     }
-    showState('idle');
+    if (isNonArticlePage(currentUrl)) {
+      showState('wrongpage');
+      return;
+    }
+    chrome.storage.session.get(['cached_result', 'cached_at', 'cached_url'], (data) => {
+      if (data.cached_result && data.cached_at && data.cached_url === currentUrl) {
+        if (Date.now() - data.cached_at < 10 * 60 * 1000) {
+          resultContent.innerHTML = renderMarkdown(data.cached_result);
+          showState('result');
+          return;
+        }
+      }
+      chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url']);
+      showState('idle');
+    });
   });
 
   // ============================================
@@ -266,8 +299,27 @@ Quote 2-3 statements that are properly sourced, cited, or verifiable.
   // ---- Event Listeners ----
 
   actionBtn.addEventListener('click', runAction);
-  retryBtn.addEventListener('click', runAction);
-  rerunBtn.addEventListener('click', runAction);
+
+  retryBtn.addEventListener('click', () => {
+    chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url']);
+    showState('idle');
+  });
+
+  rerunBtn.addEventListener('click', () => {
+    chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url']);
+    runAction();
+  });
+
+  wrongPageRetryBtn.addEventListener('click', () => {
+    chrome.storage.session.remove(['cached_result', 'cached_at', 'cached_url']);
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (tab?.url && isNonArticlePage(tab.url)) {
+        showState('wrongpage');
+      } else {
+        showState('idle');
+      }
+    });
+  });
 
   copyBtn.addEventListener('click', () => {
     const temp = document.createElement('div');

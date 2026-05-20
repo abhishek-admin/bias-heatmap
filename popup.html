@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bias Heatmap</title>
   <link rel="stylesheet" href="popup.css">
-  <style>:root { --accent: #f59e0b; }</style>
+  <style>
+    :root { --accent: #f59e0b; }
+    #wrong-page { padding: 16px 0 8px; text-align: center; }
+    .wrong-page-icon { font-size: 28px; margin-bottom: 10px; }
+    .wrong-page-title { font-size: 13px; font-weight: 600; color: #e0e0e8; margin-bottom: 6px; }
+    .wrong-page-text { font-size: 12px; color: #8888a0; line-height: 1.55; margin-bottom: 14px; }
+    #wrongpage-retry-btn { width: 100%; }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -23,7 +30,7 @@
     <div id="main-content">
       <p class="subtitle">See the spin, highlighted on the actual page</p>
       <button id="action-btn" class="primary-btn">
-        <span class="btn-text">🔥 Map the Bias</span>
+        <span class="btn-text">🔥 Expose the Spin</span>
       </button>
     </div>
 
@@ -46,6 +53,13 @@
     <div id="error" class="hidden">
       <p class="error-text" id="error-message">Something went wrong.</p>
       <button id="retry-btn" class="secondary-btn">Retry</button>
+    </div>
+
+    <div id="wrong-page" class="hidden">
+      <div class="wrong-page-icon">📰</div>
+      <p class="wrong-page-title">This isn't a news article</p>
+      <p class="wrong-page-text">Bias Heatmap works on news articles, opinion pieces, and editorials — not search results or social feeds. Navigate to a news page and try again.</p>
+      <button id="wrongpage-retry-btn" class="secondary-btn">← I'm on a news page now</button>
     </div>
 
     <div id="settings-panel" class="hidden">
