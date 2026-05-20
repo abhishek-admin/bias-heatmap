@@ -6,7 +6,7 @@
 
 News articles look objective — until you look closer. Bias Heatmap maps loaded language, unverified claims, and well-sourced facts across any article using AI. Color-coded, verbatim, no rewriting needed. One click and you'll see exactly which sentences are manipulation and which are journalism.
 
-![Demo](demo.gif)
+![Demo](biashtmp.gif)
 
 ---
 
